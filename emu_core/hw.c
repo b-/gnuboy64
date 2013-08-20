@@ -12,6 +12,7 @@
 #include "../umem/umem.h"
 #include "../mem_map/mm.h"
 struct hw __attribute__ ((aligned (16))) hw;
+un8 hw_buffer[1024] __attribute__ ((aligned (16)));
 
 extern void div_advance(int cnt);
 extern void timer_advance(int cnt);
@@ -225,7 +226,7 @@ void hw_hdma_cmd(byte c)
  
 #if 1
 	/*Faster version ~ Conle*/
-	static un8 buffer[2048];
+	
 
 	un8* direct_read_ptr = mem_map_read_ptr(sa);
 	un8* direct_write_ptr =  mem_map_write_ptr(da);
@@ -245,10 +246,10 @@ void hw_hdma_cmd(byte c)
 	} else {
 		int i,j;
 		for (i = 0;i < cnt;) {
-			j = ((i + sizeof(buffer)) > cnt) ? cnt - i : sizeof(buffer);
-			mem_read_range(sa,j,(buffer));
-	 		//data_cache_hit_writeback_invalidate(buffer,sizeof(buffer));
-			mem_write_range(da,j,buffer);
+			j = ((i + sizeof(hw_buffer)) > cnt) ? cnt - i : sizeof(hw_buffer);
+			mem_read_range(sa,j,(hw_buffer));
+	 		//data_cache_hit_writeback_invalidate(hw_buffer,sizeof(hw_buffer));
+			mem_write_range(da,j,hw_buffer);
 			sa += j;
 			da += j;
 			i += j;

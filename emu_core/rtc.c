@@ -47,26 +47,26 @@ void rtc_write(byte b)
 	{
 	case 0:
 		rtc.s = rtc.regs[0] = b;
-		while (rtc.s >= 60) rtc.s -= 60;
-		break;
+		if (rtc.s>=60)rtc.s -= (int)(b*(1.0/60.0));//while (rtc.s >= 60) rtc.s -= 60;
+		return;
 	case 1:
 		rtc.m = rtc.regs[1] = b;
-		while (rtc.m >= 60) rtc.m -= 60;
-		break;
+		if (rtc.m>=60)rtc.m -= (int)(b*(1.0/60.0));//while (rtc.m >= 60) rtc.m -= 60;
+		return;
 	case 2:
 		rtc.h = rtc.regs[2] = b;
-		while (rtc.h >= 24) rtc.h -= 24;
-		break;
+		if (rtc.h>=24)rtc.h -= (int)(b*(1.0/24.0));//while (rtc.h >= 24) rtc.h -= 24;
+		return;
 	case 3:
 		rtc.regs[3] = b;
 		rtc.d = (rtc.d & 0x100) | b;
-		break;
+		return;
 	case 4:
 		rtc.regs[4] = b;
 		rtc.d = (rtc.d & 0xff) | ((b&1)<<9);
 		rtc.stop = (b>>6)&1;
 		rtc.carry = (b>>7)&1;
-		break;
+		return;;
 	}
 }
 
@@ -153,17 +153,15 @@ void rtc_load_internal(fs_handle_t *f)
 		&rtc.carry, &rtc.stop, &rtc.d,
 		&rtc.h, &rtc.m, &rtc.s, &rtc.t, (int *)&rt);
 #endif
-	while (rtc.t >= 60) rtc.t -= 60;
-	while (rtc.s >= 60) rtc.s -= 60;
-	while (rtc.m >= 60) rtc.m -= 60;
-	while (rtc.h >= 24) rtc.h -= 24;
-	while (rtc.d >= 365) rtc.d -= 365;
+	if (rtc.t>=60) { rtc.t = (rtc.t / 60) + (60-(rtc.t & 59)); }//while (rtc.t >= 60) rtc.t -= 60;
+	if (rtc.s>=60) { rtc.s = (rtc.s / 60) + (60-(rtc.s & 59)); }//while (rtc.s >= 60) rtc.s -= 60;
+	if (rtc.m>=60) { rtc.m = (rtc.m / 60) + (60-(rtc.m & 59)); }//while (rtc.m >= 60) rtc.m -= 60;
+	if (rtc.h>=24) { rtc.h = (rtc.h / 24)  + (24-(rtc.h & 23)); }//while (rtc.h >= 24) rtc.h -= 24;
+	if (rtc.d>=365) { rtc.d = (rtc.d / 365) + (365-(rtc.d & 364)); }//while (rtc.d >= 365) rtc.d -= 365;
 	rtc.stop &= 1;
 	rtc.carry &= 1;
 	if (rt) rt = (get_ticks() - rt) * 60;
-
-	if (rt > 16*1024*1024)rt = (16*1024*1024) + ((rt & 1)!=0);
-	if (syncrtc) while (rt-- > 0) rtc_tick();
+	//if (syncrtc) while (rt-- > 0) rtc_tick();
 
 	if (&stack_buf[0] != buf) { free(buf); }
 }

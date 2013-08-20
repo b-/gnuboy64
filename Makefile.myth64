@@ -94,4 +94,4 @@ $(PROG_NAME).elf : $(OBJS)
 all: $(PROG_NAME).v64
 
 clean:
-	rm -f *.v64 *.elf *.o *.emu_opt *.bin map.txt filesystem/*.o emu_core/*.o emu_core/*.emu_opt $(FS_DRIVER)/*.o emu_asm/*.no_opt umem/*.emu_opt *.no_opt emu_core/no_opt/*.no_opt
+	rm -f *.v64 *.elf *.o *.emu_opt *.bin map.txt filesystem/*.o emu_core/*.o emu_core/*.emu_opt $(FS_DRIVER)/*.o emu_asm/*.no_opt umem/*.emu_opt *.no_opt emu_core/no_opt/*.no_opt mem_map/*.emu_opt
