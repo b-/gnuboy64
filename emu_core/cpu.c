@@ -323,13 +323,22 @@ void timer_advance(int cnt)
 	{
 		tima = R_TIMA + (cpu.tim >> 9);
 		cpu.tim &= 0x1ff;
+#if 0
 		if (tima >= 256)
 		{
 			hw_interrupt(IF_TIMER, IF_TIMER);
 			hw_interrupt(0, IF_TIMER);
 		}
+
 		while (tima >= 256)
 			tima = tima - 256 + R_TMA;
+#else
+		if (tima >= 256) {
+			hw_interrupt(IF_TIMER, IF_TIMER);
+			hw_interrupt(0, IF_TIMER);
+			tima = ((tima>>9) + (tima&0xff)) + R_TMA;
+		}
+#endif
 		R_TIMA = tima;
 	}
 }
