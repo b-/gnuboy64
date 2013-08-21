@@ -63,7 +63,6 @@ struct scan   __attribute__ ((aligned (16))) scan;
 byte __attribute__ ((aligned (16))) bgdup[256];
 byte  patpix[4096][8][8] __attribute__ ((aligned (16)));
 byte  patdirty[1024];
-//unsigned int anydirty = 0;
 
 /*Improved vram updates (Conle)*/
 unsigned int vram_list_ptr = 0;
@@ -76,7 +75,6 @@ int lcd_scale = 1;
 const int density = 1;
 const int rgb332 = 0;
 const int sprsort = 1;
-//int sprdebug;
 
 static const int wraptable[64]  __attribute__ ((aligned (16)))  =
 {
@@ -94,25 +92,6 @@ const  int filter[3][4] = {
 	{  25, 170,  25,  35 },
 	{  25,  60, 125,  40 }
 };
-/*
-rcvar_t lcd_exports[] =
-{
-	RCV_INT("scale", &scale),
-	RCV_INT("density", &density),
-	RCV_BOOL("rgb332", &rgb332),
-	RCV_VECTOR("dmg_bgp", dmg_pal[0], 4),
-	RCV_VECTOR("dmg_wndp", dmg_pal[1], 4),
-	RCV_VECTOR("dmg_obp0", dmg_pal[2], 4),
-	RCV_VECTOR("dmg_obp1", dmg_pal[3], 4),
-	RCV_BOOL("sprsort", &sprsort),
-	RCV_BOOL("sprdebug", &sprdebug),
-	RCV_BOOL("colorfilter", &usefilter),
-	RCV_BOOL("filterdmg", &filterdmg),
-	RCV_VECTOR("red", filter[0], 4),
-	RCV_VECTOR("green", filter[1], 4),
-	RCV_VECTOR("blue", filter[2], 4),
-	RCV_END
-};*/
 
 
  
@@ -749,40 +728,17 @@ void spr_scan()
 		{
 			if (!bg_cpy) { util_cpy_lcd_buf_mips(bgdup,BUF); bg_cpy = 1;}
 			bg = bgdup + (dest - BUF);
- 
-
-#if 0
-			while (i--)
-			{
-				b = src[i];
-				if (b && !(bg[i]&3)) dest[i] = pal|b;
-			}
-#else
 			lcd_scan_color_pri_mips(dest,src,pri,bg,i,pal);
-#endif
 		}
 		else if (hw.cgb)
 		{
 			if (!bg_cpy) { util_cpy_lcd_buf_mips(bgdup,BUF); bg_cpy = 1;}
 			bg = bgdup + (dest - BUF);
 			pri = PRI + (dest - BUF);
-
-#if 0
-			while (i--)
-			{
-				b = src[i];
-				if (b && (!pri[i] || !(bg[i]&3)))
-					dest[i] = pal|b;
-			}
-#else
 			lcd_scan_color_cgb_mips(dest,src,pri,bg,i,pal);
-#endif
 		}
 		else {
  
-#if 0
-			while (i--) if (src[i]) dest[i] = pal|src[i];
-#else
 			//Simple..
 			register byte* pa= dest;
 			register const byte* pb = &src[0],*pc=&src[i];
@@ -793,11 +749,8 @@ void spr_scan()
 					++pb,++pa;
 				} while (pb < pc);
 			}
-#endif
 		}
-		/* else while (i--) if (src[i]) dest[i] = 31 + ns; */
 	}
-	//if (sprdebug){ for (i = 0; i < NS; i++) BUF[i<<1] = 36; }
 }
 
 
@@ -820,18 +773,6 @@ void lcd_init() {
 
 void lcd_begin()
 {
-	/*
-    //Moved to (new)init to avoid muls&branches on ioreg_write
-	if (fb.indexed)
-	{
-		if (rgb332) pal_set332();
-		else pal_expire();
-	}
-	while (scale * 160 > fb.w || scale * 144 > fb.h) scale--;
-	vdest = fb.ptr + ((fb.w*fb.pelsize)>>1)
-		- (80*fb.pelsize) * scale
-		+ ((fb.h>>1) - 72*scale) * fb.pitch;
-	*/
 	extern void lcd_new_pass();
 	lcd_new_pass();
 	vdest = s_vdest;
@@ -887,13 +828,9 @@ void lcd_refreshline()
 		lcd_recolor_mips(BUF+WX, 0x04, 160-WX);
 	}
 	spr_scan();
- 
-	//if (fb.dirty) memset(fb.ptr, 0, fb.pitch * fb.h);
-	//fb.dirty = 0;
-	//if (density > scale) density = scale;
-	//if (lcd_scale == 1) density = 1;
 
-	dest = vdest;// (density != 1) ? scalebuf : vdest;
+
+	dest = vdest;
  	extern void lcd_refresh_line_2_pal4_mips(void* dest,void* src,void* pal) ;
 	switch (lcd_scale)
 	{
@@ -972,36 +909,7 @@ void lcd_refreshline()
 	default:
 		break;
 	}
-
-/*
-	if (density != 1)
-	{
-		const unsigned int len = 160 * fb.pelsize * scale;
-
-		for (i = 0; i < scale; i++)
-		{
-			if ((i < density) || ((density <= 0) && !(i&1))) {
-				unsigned int x = len ;
-				byte* wb = vdest;
-				byte* sb = scalebuf;
-
-				while (x >= 32) {
-					MEMCPY8(&wb[0],&sb[0]);
-					MEMCPY8(&wb[8],&sb[8]);
-					MEMCPY8(&wb[16],&sb[16]);
-					MEMCPY8(&wb[24],&sb[24]);
-					x -= 32;
-					wb += 32;
-					sb += 32;
-				}
-				for (;x > 0;--x) {
-					*(wb++) = *(sb++);
-				}
-				//memcpy(vdest, scalebuf, 160 * fb.pelsize * scale);
-			}
-			vdest += fb.pitch;
-		}
-	}*/
+ 
 	vdest += vdest_stride;
  
 }
@@ -1019,83 +927,10 @@ static inline void updatepalette(int i)
 	c = lcd_pal_rdp_components[c];
 	PAL4[i] = (c  << 16) | c;
 	PAL2[i] = c;
-#if 0
-	r = (c & 0x001F) << 3;
-	g = (c & 0x03E0) >> 2;
-	b = (c & 0x7C00) >> 7;
-	r |= (r >> 5);
-	g |= (g >> 5);
-	b |= (b >> 5);
-#endif
-#if 0
-	if (usefilter && (filterdmg || hw.cgb))
-	{
-		rr = ((r * filter[0][0] + g * filter[0][1] + b * filter[0][2]) >> 8) + filter[0][3];
-		gg = ((r * filter[1][0] + g * filter[1][1] + b * filter[1][2]) >> 8) + filter[1][3];
-		b = ((r * filter[2][0] + g * filter[2][1] + b * filter[2][2]) >> 8) + filter[2][3];
-		r = rr;
-		g = gg;
-	}
-	
-	if (fb.yuv)
-	{
-		y = (((r *  263) + (g * 516) + (b * 100)) >> 10) + 16;
-		u = (((r *  450) - (g * 377) - (b *  73)) >> 10) + 128;
-		v = (((r * -152) - (g * 298) + (b * 450)) >> 10) + 128;
-		if (y < 0) y = 0; if (y > 255) y = 255;
-		if (u < 0) u = 0; if (u > 255) u = 255;
-		if (v < 0) v = 0; if (v > 255) v = 255;
-		PAL4[i] = (y<<fb.cc[0].l) | (y<<fb.cc[3].l)
-			| (u<<fb.cc[1].l) | (v<<fb.cc[2].l);
-		return;
-	}
-	
-	if (fb.indexed)
-	{
-		pal_release(PAL1[i]);
-		c = pal_getcolor(c, r, g, b);
-		PAL1[i] = c;
-		PAL2[i] = (c<<8) | c;
-		PAL4[i] = (c<<24) | (c<<16) | (c<<8) | c;
-		return;
-	}
-#endif
-
-#if 0
-	int cr=r,cg=g,cb=b;
-	r = (r >> fb.cc[0].r) << fb.cc[0].l;
-	g = (g >> fb.cc[1].r) << fb.cc[1].l;
-	b = (b >> fb.cc[2].r) << fb.cc[2].l;
- 
-
-	c = r|g|b|1;
- 
- 
-	switch (fb.pelsize)
-	{	
-	case 0:
-	case 1:
-		PAL1[i] = c;
-		PAL2[i] = (c<<8) | c;
-		PAL4[i] = (c<<24) | (c<<16) | (c<<8) | c;
-		break;
-	case 2:
- 
-		PAL2[i] = c;
-		PAL4[i] = (c<<16) | c;
-		break;
-	case 3:
-	case 4:
-		PAL4[i] = c;
-		break;
-	}
- 
-#endif
 }
 
 void pal_write(int i, byte b)
 {
-	
 	if (lcd.pal[i] == b) return;
 	lcd.pal[i] = b;
 	updatepalette(i>>1);
@@ -1128,23 +963,18 @@ void vram_write(int a, byte b)
 	lcd.vbank[R_VBK&1][a] = b;
 	if (a >= 0x1800) return;
 
-
 	/*Add entry to list (Conle)*/
 	const unsigned int offs = ((R_VBK&1)<<9)+(a>>4);
  
 	if (patdirty[offs] == 0) {
 		vram_list[vram_list_ptr++] = (unsigned short)offs;
 		patdirty[offs] = 1;
-		//++anydirty;
 	}
  
 }
 
 void vram_write_range(int a,int cnt,const byte* data)
 {
-
-
-
 	/*Add entry to list (Conle)*/
 	int i;
 	for (i = 0;i < cnt;++i,++a) {
@@ -1156,7 +986,6 @@ void vram_write_range(int a,int cnt,const byte* data)
 		if (patdirty[offs] == 0) {
 			vram_list[vram_list_ptr++] = (unsigned short)offs;
 			patdirty[offs] = 1;
-			//++anydirty;
 		}
 	}
  
@@ -1184,8 +1013,6 @@ void vram_dirty()
 	for (i = 896;i < 1024;++i) {
 		patdirty[i] = 1;
 	}
-
-	//anydirty = vram_list_ptr;
 }
 
 void pal_dirty()

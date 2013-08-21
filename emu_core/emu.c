@@ -9,22 +9,10 @@
 #include "rtc.h"
 #include "pcm.h"
 
-//#include "rc.h"
-
 #include "hw.h"
 #include "../pcm_ring_buf.h"
 
-//static int framelen = 16743;
-//static int framecount;
-
 byte g_emu_running = 0;
-/*rcvar_t emu_exports[] =
-{
-	RCV_INT("framelen", &framelen),
-	RCV_INT("framecount", &framecount),
-	RCV_END
-};*/
-
 
 
 
@@ -87,20 +75,6 @@ void emu_step()
 		vblank lines x10 = 2280 dsc (1.08ms)
 */
 
-#if 0
-#include <libdragon.h>
-void dbg(const char* s)
-{
- 
-	extern display_context_t binded_display_ctx;
-
-	unsigned int* tmp = (unsigned int*)&display_grab_framebuffer_ptr(binded_display_ctx)[16 + (168 * 320)];
-	unsigned int i = 0;
-	for (i = 0;i < 32;++i)tmp[i] = 0;
-
-	graphics_draw_text(binded_display_ctx,16,168,s);
-}
-#endif
 
 
 void emu_run()

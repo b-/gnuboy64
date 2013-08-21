@@ -336,7 +336,7 @@ void timer_advance(int cnt)
 		if (tima >= 256) {
 			hw_interrupt(IF_TIMER, IF_TIMER);
 			hw_interrupt(0, IF_TIMER);
-			tima = ((tima>>9) + (tima&0xff)) + R_TMA;
+			tima = ((tima>>8) + (tima&0xff)) + R_TMA;
 		}
 #endif
 		R_TIMA = tima;

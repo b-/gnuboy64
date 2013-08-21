@@ -54,7 +54,8 @@ void mbc_write(int a, byte b);
 void mem_write(int a, byte b);
 byte mem_read(int a);
 void mbc_reset();
-
+void ioreg_write(byte r, byte b);
+byte ioreg_read(byte r);
 
 #define READB(a) ( mbc.rmap[(a)>>12] \
 ? mbc.rmap[(a)>>12][(a)] \

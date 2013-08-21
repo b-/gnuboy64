@@ -471,19 +471,4 @@ void loader_init(char *s)
 	//if(name)free(name);
 	//atexit(cleanup);
 }
-
-/*
-rcvar_t loader_exports[] =
-{
-	RCV_STRING("savedir", &savedir),
-	RCV_STRING("savename", &savename),
-	RCV_INT("saveslot", &saveslot),
-	RCV_BOOL("forcebatt", &forcebatt),
-	RCV_BOOL("nobatt", &nobatt),
-	RCV_BOOL("forcedmg", &forcedmg),
-	RCV_BOOL("gbamode", &gbamode),
-	RCV_INT("memfill", &memfill),
-	RCV_INT("memrand", &memrand),
-	RCV_END
-};
- */
+ 

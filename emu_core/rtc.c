@@ -1,26 +1,16 @@
 
-
-
 #include <stdio.h>
 #include <time.h>
-
 #include "defs.h"
 #include "mem.h"
 #include "rtc.h"
 #include <malloc.h>
 #include <string.h>
 #include <libdragon.h>
-//#include "rc.h"
 
 struct rtc rtc;
 
 static const int syncrtc = 0;
-/*
-rcvar_t rtc_exports[] =
-{
-	RCV_BOOL("syncrtc", &syncrtc),
-	RCV_END
-};*/
 
 
 void rtc_latch(byte b)
@@ -104,10 +94,6 @@ void rtc_save_internal(fs_handle_t *f)
     
 	rt = get_ticks();
 
-#if 0
-	fs_printf(f, "%d %d %d %02d %02d %02d %02d\n%d\n",
-		rtc.carry, rtc.stop, rtc.d, rtc.h, rtc.m, rtc.s, rtc.t, (int)rt);
-#else
 	char buf[1024];
 	sprintf(buf,"%d %d %d %02d %02d %02d %02d\n%d\n",
 		rtc.carry, rtc.stop, rtc.d, rtc.h, rtc.m, rtc.s, rtc.t, (int)rt);	
@@ -115,20 +101,13 @@ void rtc_save_internal(fs_handle_t *f)
 	data_cache_hit_writeback_invalidate(buf,sizeof(buf));
 	
 	fs_write(f,(const void*)buf,strlen(buf));
-	
-#endif
+
 }
 
 void rtc_load_internal(fs_handle_t *f)
 {
 	time_t rt = 0;
 
-#if 0
-	fs_scanf(
-		f, "%d %d %d %02d %02d %02d %02d\n%d\n",
-		&rtc.carry, &rtc.stop, &rtc.d,
-		&rtc.h, &rtc.m, &rtc.s, &rtc.t, (int *)&rt);
-#else
 
 	char stack_buf[260];
 	char* buf;
@@ -152,7 +131,7 @@ void rtc_load_internal(fs_handle_t *f)
 	sscanf(buf,"%d %d %d %02d %02d %02d %02d\n%d\n",
 		&rtc.carry, &rtc.stop, &rtc.d,
 		&rtc.h, &rtc.m, &rtc.s, &rtc.t, (int *)&rt);
-#endif
+
 	if (rtc.t>=60) { rtc.t = (rtc.t / 60) + (60-(rtc.t & 59)); }//while (rtc.t >= 60) rtc.t -= 60;
 	if (rtc.s>=60) { rtc.s = (rtc.s / 60) + (60-(rtc.s & 59)); }//while (rtc.s >= 60) rtc.s -= 60;
 	if (rtc.m>=60) { rtc.m = (rtc.m / 60) + (60-(rtc.m & 59)); }//while (rtc.m >= 60) rtc.m -= 60;
