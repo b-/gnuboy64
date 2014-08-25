@@ -10,6 +10,7 @@
 #include "../hw.h"
 #include "../lcd.h"
 #include "../rtc.h"
+#include "../../ctl.h"
 //#include "rc.h"
 #include "../sound.h"
 #include <libdragon.h>
@@ -148,6 +149,7 @@ static int file_size(fs_handle_t* f)
 	return l;
 }
 
+#if __FS_BUILD__ != FS_N64_ROMFS
 static byte* load_file_n64(fs_handle_t* f,const char* romfile) {
 	
 	byte* res = 0;
@@ -200,6 +202,7 @@ static byte* load_file_n64(fs_handle_t* f,const char* romfile) {
 	return res;
 #endif
 }
+
 
 int rom_load(const char* romfile)
 {
@@ -260,8 +263,72 @@ int rom_load(const char* romfile)
 	return 0;
 }
 
+#else
+
+int rom_load(const char* romfile)
+{
+ 	
+	byte c,  *header;
+ 
+	header = 0;
+ 
+	{
+		uint8_t dummy[256];
+		ctl_dma_rom_rd(dummy,0,256);
+		uint32_t game_len = ((uint32_t)dummy[0] << 24U) | ((uint32_t)dummy[1] << 16U) | ((uint32_t)dummy[2] << 8U) | ((uint32_t)dummy[3]);
+		uint32_t state_len = ((uint32_t)dummy[4] << 24U) | ((uint32_t)dummy[5] << 16U) | ((uint32_t)dummy[6] << 8U) | ((uint32_t)dummy[7]);
+		header = malloc(game_len);
+		if (!header)die("rom_load : out of mem!\n");
+		ctl_dma_rom_rd(header,256 + state_len,game_len);
+	}
+ 
+	memset(rom.name,'\0',20);
+	memcpy(rom.name, header+0x0134, 16);
+	if (rom.name[14] & 0x80) rom.name[14] = 0;
+	if (rom.name[15] & 0x80) rom.name[15] = 0;
+	rom.name[16] = 0;
+	
+	c = header[0x0147];
+	mbc.type = mbc_table[c];
+	mbc.batt = (batt_table[c] && !nobatt) || forcebatt;
+	rtc.batt = rtc_table[c];
+	mbc.romsize = romsize_table[header[0x0148]];
+	mbc.ramsize = ramsize_table[header[0x0149]];
+
+	if (!mbc.romsize) die("unknown ROM size %02X\n", header[0x0148]);
+	if (!mbc.ramsize) die("unknown SRAM size %02X\n", header[0x0149]);
+
+	rom.bank = header;//malloc(rs);
+	//if (!rom.bank) die("out of memory");
+	//memcpy(rom.bank,header,rs);
+ 
+
+	ram.sbank = malloc(8192 * mbc.ramsize);
+	 
+	initmem(ram.sbank, 8192 * mbc.ramsize);
+	initmem(ram.ibank, 4096 * 8);
+
+	mbc.rombank = 1;
+	mbc.rambank = 0;
+
+	c = header[0x0143];
+	hw.cgb = ((c == 0x80) || (c == 0xc0)) && !forcedmg;
+	hw.gba = (hw.cgb && gbamode);
+ 
+
+	
+	return 0;
+}
+
+#endif
+
+int sram_test() {
+	return ctl_dbg_cmp_sram(ram.sbank,8192*mbc.ramsize);
+}
+
 int sram_load()
 {
+#if __FS_BUILD__ != FS_N64_ROMFS
 	fs_handle_t* f;
 
 	if (!mbc.batt /*|| !sramfile || !*sramfile*/) return -1;
@@ -273,13 +340,19 @@ int sram_load()
 	if (!f) return -1;
 	fs_read(f,ram.sbank, 8192*mbc.ramsize);
 	fs_close(f);
-	
+#else
+	if (!mbc.batt) return -1;
+	ram.loaded = 1;
+	if (!ctl_read_sram(ram.sbank, 8192*mbc.ramsize))
+		return -1;
+#endif
 	return 0;
 }
 
 
 int sram_save()
 {
+#if __FS_BUILD__ != FS_N64_ROMFS
 	fs_handle_t* f;
 
 	/* If we crash before we ever loaded sram, DO NOT SAVE! */
@@ -290,13 +363,18 @@ int sram_save()
 	if (!f) return -1;
 	fs_write(f,ram.sbank, 8192*mbc.ramsize);
 	fs_close(f);
-	
+#else
+	if (!mbc.batt /*|| !sramfile */|| !ram.loaded || !mbc.ramsize)
+		return -1;
+	ctl_write_sram(ram.sbank, 8192*mbc.ramsize);
+#endif
 	return 0;
 }
 
 
 void state_save(int n)
 {
+#if __FS_BUILD__ != FS_N64_ROMFS
 	fs_handle_t* f;
 	char name[MAX_ROM_PATH+8];
 
@@ -308,12 +386,15 @@ void state_save(int n)
 		savestate(f);
 		fs_close(f);
 	}
- 
+#else
+	savestate(NULL);
+#endif
 }
 
 
 void state_load(int n)
 {
+#if __FS_BUILD__ != FS_N64_ROMFS
 	fs_handle_t* f;
 	char name[MAX_ROM_PATH+8];
 
@@ -324,14 +405,19 @@ void state_load(int n)
 	if ((f = fs_open(name, "rb")))
 	{
 		loadstate(f);
-		fs_close(f);
 		vram_dirty();
 		pal_dirty();
 		sound_dirty();
 		mem_updatemap();
 		fs_close(f);
 	}
- 
+#else
+		loadstate(NULL); 
+		vram_dirty();
+		pal_dirty();
+		sound_dirty();
+		mem_updatemap();
+#endif
 }
 
 void rtc_save()
@@ -466,9 +552,13 @@ void loader_init(char *s)
 
 
 #endif
+	ctl_set_signature(rom.name);
+	ctl_build_initial_state_block();
 	sram_load();
 	rtc_load();
 	//if(name)free(name);
 	//atexit(cleanup);
+
+
 }
  

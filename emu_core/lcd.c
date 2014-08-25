@@ -553,9 +553,9 @@ void spr_count() /*UNUSED*/
 
 }
 
-static int cmp_qs(void* a, void* b) {
-	struct vissprite* pa = (struct vissprite*)a;
-	struct vissprite* pb = (struct vissprite*)b;
+static int cmp_qs(const void* a, const void* b) {
+	const struct vissprite* pa = (const struct vissprite*)a;
+	const struct vissprite* pb = (const struct vissprite*)b;
 
 	if (pa->x > pb->x) {
 		return 1;
@@ -565,18 +565,7 @@ static int cmp_qs(void* a, void* b) {
 	return -1;
 }
 
-static int cmp_qs2(void* a, void* b) {
-	struct sprite_indice_t* pa = (struct sprite_indice_t*)a;
-	struct sprite_indice_t* pb = (struct sprite_indice_t*)b;
-
-	if (pa->x > pb->x) {
-		return 1;
-	} else if (pa->x == pb->x) {
-		return 0;
-	}
-	return -1;
-}
-
+ 
 void spr_enum()
 {
 	//int i, j;

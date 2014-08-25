@@ -185,8 +185,10 @@ void  __attribute__((hot))  sound_mix()
 {
 	register int s, l, r, f, n;
 
-	if (!RATE || cpu.snd < RATE) return;
-
+	extern byte g_curr_snd_driver;
+	if (!g_curr_snd_driver) return;
+	else if (!RATE || cpu.snd < RATE) return;
+	
 	register const byte* s1_sqwave = &sqwave[R_NR11>>6][0];
 	register const byte* s2_sqwave = &sqwave[R_NR21>>6][0];
 	register const byte* s4_noise_ptr = (R_NR43 & 8)  ?  noise7 : noise15;
@@ -304,7 +306,7 @@ void  __attribute__((hot))  sound_mix()
 
 		if (S4.on)
 		{
-#if 1
+#if 0
 			s = 1 & (s4_noise_ptr[(S4.pos>>20)&s4_noise_mask] >> (7-((S4.pos>>17)&7)));
 #else
 			if (R_NR43 & 8) s = 1 & (noise7[
@@ -324,7 +326,7 @@ void  __attribute__((hot))  sound_mix()
 				S4.envol&=15;//if (S4.envol > 15) S4.envol = 15;
 			}
 			s += s << 1;
-#if 1
+#if 0
 			r += s & nr51_andi8_mask;
 			l += s & nr51_andi128_mask;
 #else
@@ -344,7 +346,7 @@ void  __attribute__((hot))  sound_mix()
 		else if (r < -128) r = -128;
 		*/
 
-		if (pcm.pos >= pcm.len) {
+		if (pcm.pos+4 > pcm.len) {
 			pcm_submit();
 			pcm_buf = pcm.buf;
 		}
@@ -365,14 +367,7 @@ void  __attribute__((hot))  sound_mix()
 
 byte sound_read(byte r)
 {
-	if (cpu.snd >= RATE) {
-		if (r == RI_NR52) {
-			if (R_NR52 != prev_nr52_state) {
-				sound_mix();
-				prev_nr52_state = R_NR52;
-			}
-		}
-	}
+	sound_mix();
 	/* printf("read %02X: %02X\n", r, REG(r)); */
 	return REG(r);
 }
@@ -438,22 +433,12 @@ void sound_write(byte r, byte b)
 	else if ((r & 0xF0) == 0x30)
 	{
 		if (S3.on) {
-			if (cpu.snd >= RATE) {
-				if (R_NR52 != prev_nr52_state) {
-					sound_mix();
-					prev_nr52_state = R_NR52;
-				}
-			}
+	 sound_mix();
 		}
 		if (!S3.on)
 			WAVE[r-0x30] = ram.hi[r] = b;
 		return;
-	} else if (cpu.snd >= RATE) {
-		if (R_NR52 != prev_nr52_state) {
-			sound_mix();
-			prev_nr52_state = R_NR52;
-		}
-	}
+	} else sound_mix();
 	switch (r)
 	{
 	case RI_NR10:

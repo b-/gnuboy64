@@ -13,7 +13,7 @@ FS_DRIVER = filesystem/drivers/ed64
 FS_DEFAULT_LIB = -lff
 
 #NOTE (Myth64 only) : DO NOT REMOVE "N64 Myth" or the menu's loader will FAIL to detect it as mythaware app
-ROM_HEADER_TITLE = "N64 Myth GNUBOY64"
+ROM_HEADER_TITLE = "GNUBOY64ed"
 
 #if you use these non-callee regs in inline asm make sure to save/restore them since they're manually mapped
 #by the cpu interpreter (NOTE:20-23 are callee ~so skip those)
@@ -58,7 +58,7 @@ LD = $(N64PREFIX)ld
 OBJCOPY = $(N64PREFIX)objcopy
 
 PROG_NAME = gnuboy64
-OBJS = stack_based_qsort.emu_opt rdp_srec.no_opt rdp_srec_tex_format.emu_opt pcm_ring_buf.emu_opt main.emu_opt \
+OBJS = ctl.no_opt stack_based_qsort.emu_opt rdp_srec.no_opt rdp_srec_tex_format.emu_opt pcm_ring_buf.emu_opt main.emu_opt \
 media.emu_opt wstring.emu_opt $(patsubst %.c,%.o,$(wildcard filesystem/*.c)) \
 $(patsubst %.c,%.emu_opt,$(wildcard emu_core/*.c)) $(patsubst %.c,%.no_opt,$(wildcard emu_asm/*.c)) \
 $(patsubst %.c,%.emu_opt,$(wildcard umem/*.c)) $(patsubst %.c,%.no_opt,$(wildcard emu_core/no_opt/*.c)) \

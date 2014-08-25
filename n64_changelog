@@ -1,3 +1,15 @@
+
+22/3/14:
++64Drive is now supported (Thanks to Marshall(64drive.retroactive.be) for the sample cart)
+
+8/3/14:
++Implemented full ROM version with embedded tiny fs (also supports save State(max 1)/Sram+Rtc saves)
++Implemented a very primitve SRAM file system
++Did some hackish changes for the rombuild around the source code to simplify things(ie too lazy to implement proper rom fs driver)
++Wrote a simple tool to import GB/GBC files + state files into the rom build (Works with mess emulator aswell)
+
+
+Initial version:
 +~90+% of lcd code has been rewritten in  mips assembly
 +Added more cpu precomputed lookup tables&improved original code
 +Almost 1MB of rom data are precomputed lookup tables (Yikes!!!)

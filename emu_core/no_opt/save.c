@@ -11,7 +11,7 @@
 #include "../rtc.h"
 #include "../mem.h"
 #include "../sound.h"
-
+#include "../../ctl.h"
 
 
 #ifdef IS_LITTLE_ENDIAN
@@ -132,6 +132,7 @@ struct svar svars[] =  { \
 	END\
 };
 
+#if __FS_BUILD__ != FS_N64_ROMFS
 void loadstate(fs_handle_t *f)
 {
 	/*
@@ -262,4 +263,191 @@ void savestate(fs_handle_t *f)
 	fs_seek(f, sramblock<<12, SEEK_SET);
 	fs_write(f,ram.sbank, 4096 * srl);
 }
+#else
+void loadstate_ptr(byte* buf,un32 buf_size)
+{
+	extern uint16_t save_slot;
+	/*
+		XXX Note : Hack for  Mips GCC4.4.0 which won't be able to resolve the address of the structure's symbols at compile time
+		(Conle)
+	*/
+	EMIT_SVAR_TO_LOCAL_SCOPE
+
+	int i, j;
+	un32 (*header)[2] = (un32 (*)[2])buf;
+	un32 d;
+	int irl = hw.cgb ? 8 : 2;
+	int vrl = hw.cgb ? 4 : 2;
+	int srl = mbc.ramsize << 1;
+
+	ver = hramofs = hiofs = palofs = oamofs = wavofs = 0;
+
+ 	
+	for (j = 0; header[j][0]; j++)
+	{
+		for (i = 0; svars[i].ptr; i++)
+		{
+			un32* tmpv = (un32 *)svars[i].key;
+			if (header[j][0] != *tmpv)
+				continue;
+			d = LIL(header[j][1]);
+			switch (svars[i].len)
+			{
+			case 1:
+				*(byte *)svars[i].ptr = d;
+				break;
+			case 2:
+				*(un16 *)svars[i].ptr = d;
+				break;
+			case 4:
+				*(un32 *)svars[i].ptr = d;
+				break;
+			}
+			break;
+		}
+	}
+	
+	if (hiofs + sizeof(ram.hi) > buf_size) goto loadstate_fail;
+	if (palofs + sizeof(lcd.pal) > buf_size) goto loadstate_fail;
+	if (oamofs + sizeof(lcd.oam) > buf_size) goto loadstate_fail;
+	if (wavofs + sizeof(snd.wave) > buf_size) goto loadstate_fail;
+
+	/* obsolete as of version 0x104 */
+	if (hramofs) memcpy(ram.hi+128, buf+hramofs, 127);
+	
+	if (hiofs) memcpy(ram.hi, buf+hiofs, sizeof ram.hi);
+	if (palofs) memcpy(lcd.pal, buf+palofs, sizeof lcd.pal);
+	if (oamofs) memcpy(lcd.oam.mem, buf+oamofs, sizeof lcd.oam);
+
+	if (wavofs) memcpy(snd.wave, buf+wavofs, sizeof snd.wave);
+	else memcpy(snd.wave, ram.hi+0x30, 16); /* patch data from older files */
+ 
+	if (((iramblock<<12) + (4096 * irl)) > buf_size)
+		goto loadstate_fail;
+	memcpy(ram.ibank,&buf[ (iramblock<<12)],4096 * irl);
+
+	if (((vramblock<<12) + (4096 * vrl)) > buf_size)
+		goto loadstate_fail;
+
+	memcpy(lcd.vbank,&buf[(vramblock<<12)],4096 * vrl);
+ 
+	if (((sramblock<<12) + (4096 * srl)) > buf_size)
+		goto loadstate_fail;
+
+	memcpy(ram.sbank,&buf[(sramblock<<12)],4096 * srl);
+	return;
+
+loadstate_fail:
+	die("Load state fail(STATE > 128K)");
+}
+
+void loadstate(fs_handle_t *f)
+{
+	extern uint16_t save_slot;
+
+	un32 buf_size=128*1024;
+	byte* buf = malloc(buf_size);
+	if (!buf) {
+		die("load state:out of mem");
+		return;
+	}
+ 
+	ctl_read_state(buf,buf_size,save_slot);
+ 	loadstate_ptr(buf,buf_size);
+	free(buf);
+}
+
+void savestate(fs_handle_t *f)
+{
+	extern uint16_t save_slot;
+	/*
+		XXX Note : Hack for  Mips GCC4.4.0 which won't be able to resolve the address of the structure's symbols at compile time
+		(Conle)
+	*/
+	EMIT_SVAR_TO_LOCAL_SCOPE
+
+ 
+	int i;
+	un32 buf_size=128*1024;
+	byte* buf;
+	buf = malloc(buf_size);
+	if (!buf) {
+		die("save state:out of mem");
+		return;
+	}
+	un32 (*header)[2] = (un32 (*)[2])buf;
+	un32 d = 0;
+	int irl = hw.cgb ? 8 : 2;
+	int vrl = hw.cgb ? 4 : 2;
+	int srl = mbc.ramsize << 1;
+
+
+
+	ver = 0x105;
+	iramblock = 1;
+	vramblock = 1+irl;
+	sramblock = 1+irl+vrl;
+	wavofs = 4096 - 784;
+	hiofs = 4096 - 768;
+	palofs = 4096 - 512;
+	oamofs = 4096 - 256;
+	data_cache_hit_writeback_invalidate(buf,buf_size);
+	memset(buf, 0, buf_size);
+
+	for (i = 0; svars[i].len > 0; i++)
+	{
+		un32* tmpv = (un32 *)svars[i].key;
+		header[i][0] = *tmpv;
+		switch (svars[i].len)
+		{
+		case 1:
+			d = *(byte *)svars[i].ptr;
+			break;
+		case 2:
+			d = *(un16 *)svars[i].ptr;
+			break;
+		case 4:
+			d = *(un32 *)svars[i].ptr;
+			break;
+		}
+		header[i][1] = LIL(d);
+	}
+	header[i][0] = header[i][1] = 0;
+
+	if (hiofs + sizeof(ram.hi) > buf_size) goto savestate_fail;
+	if (palofs + sizeof(lcd.pal) > buf_size) goto savestate_fail;
+	if (oamofs + sizeof(lcd.oam) > buf_size) goto savestate_fail;
+	if (wavofs + sizeof(snd.wave) > buf_size) goto savestate_fail;
+
+	memcpy(buf+hiofs, ram.hi, sizeof ram.hi);
+	memcpy(buf+palofs, lcd.pal, sizeof lcd.pal);
+	memcpy(buf+oamofs, lcd.oam.mem, sizeof lcd.oam);
+	memcpy(buf+wavofs, snd.wave, sizeof snd.wave);
+
+	if (((iramblock<<12) + (4096 * irl)) > buf_size)
+		goto savestate_fail;
+
+	memcpy(&buf[ (iramblock<<12)],ram.ibank,4096 * irl);
+	
+	if (((vramblock<<12) + (4096 * vrl)) > buf_size)
+		goto savestate_fail;
+
+	memcpy(&buf[ (vramblock<<12)],lcd.vbank,4096 * vrl);
+ 
+	
+	if (((sramblock<<12) + (4096 * srl)) > buf_size)
+		goto savestate_fail;
+
+	memcpy(&buf[ (sramblock<<12)],ram.sbank,4096 * srl);
+
+
+	ctl_write_state(buf,buf_size,save_slot);
+	free(buf);
+	return;
+
+savestate_fail:
+	free(buf);
+	die("Save State fail(STATE > 128K)");
+}
+#endif
 

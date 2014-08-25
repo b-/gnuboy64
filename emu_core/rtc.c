@@ -7,6 +7,7 @@
 #include <malloc.h>
 #include <string.h>
 #include <libdragon.h>
+#include "../ctl.h"
 
 struct rtc rtc;
 
@@ -86,8 +87,29 @@ void rtc_tick()
 	}
 }
 
-#include <libdragon.h>
+ 
+#if __FS_BUILD__ == FS_N64_ROMFS
+void rtc_save_internal(fs_handle_t *f)
+{
+	time_t rt;
+    int rrt;
+	rt = get_ticks();
+	rrt = (int)rt;
 
+	char buf[32];
+ 
+	memcpy(&buf[0],(char*)&rtc.carry,4);
+	memcpy(&buf[4],(char*)&rtc.stop,4);
+	memcpy(&buf[8],(char*)&rtc.d,4);
+	memcpy(&buf[12],(char*)&rtc.h,4);
+	memcpy(&buf[16],(char*)&rtc.m,4);
+	memcpy(&buf[20],(char*)&rtc.s,4);
+	memcpy(&buf[24],(char*)&rtc.t,4);
+	memcpy(&buf[28],(char*)&rrt,4);
+
+	ctl_write_rtc(buf,32);
+}
+#else
 void rtc_save_internal(fs_handle_t *f)
 {
 	time_t rt;
@@ -103,7 +125,37 @@ void rtc_save_internal(fs_handle_t *f)
 	fs_write(f,(const void*)buf,strlen(buf));
 
 }
+#endif
 
+#if __FS_BUILD__ == FS_N64_ROMFS
+void rtc_load_internal(fs_handle_t *f)
+{
+	char buf[32] = {0};	
+	time_t rt = 0;
+ 	int rrt = 0;
+
+	ctl_read_rtc(buf,32);
+
+	memcpy((char*)&rtc.carry,&buf[0],4);
+	memcpy((char*)&rtc.stop,&buf[4],4);
+	memcpy((char*)&rtc.d,&buf[8],4);
+	memcpy((char*)&rtc.h,&buf[12],4);
+	memcpy((char*)&rtc.m,&buf[16],4);
+	memcpy((char*)&rtc.s,&buf[20],4);
+	memcpy((char*)&rtc.t,&buf[24],4);
+	memcpy((char*)&rrt,&buf[28],4);
+	rt = (time_t)rrt;
+	if (rtc.t>=60) { rtc.t = (rtc.t / 60) + (60-(rtc.t & 59)); }//while (rtc.t >= 60) rtc.t -= 60;
+	if (rtc.s>=60) { rtc.s = (rtc.s / 60) + (60-(rtc.s & 59)); }//while (rtc.s >= 60) rtc.s -= 60;
+	if (rtc.m>=60) { rtc.m = (rtc.m / 60) + (60-(rtc.m & 59)); }//while (rtc.m >= 60) rtc.m -= 60;
+	if (rtc.h>=24) { rtc.h = (rtc.h / 24)  + (24-(rtc.h & 23)); }//while (rtc.h >= 24) rtc.h -= 24;
+	if (rtc.d>=365) { rtc.d = (rtc.d / 365) + (365-(rtc.d & 364)); }//while (rtc.d >= 365) rtc.d -= 365;
+	rtc.stop &= 1;
+	rtc.carry &= 1;
+	if (rt) rt = (get_ticks() - rt) * 60;
+	//if (syncrtc) while (rt-- > 0) rtc_tick();
+}
+#else
 void rtc_load_internal(fs_handle_t *f)
 {
 	time_t rt = 0;
@@ -144,4 +196,4 @@ void rtc_load_internal(fs_handle_t *f)
 
 	if (&stack_buf[0] != buf) { free(buf); }
 }
-
+#endif

@@ -6,7 +6,8 @@
 
 #ifndef __filesystem_h__
 #define __filesystem_h__
- 
+#include <stdint.h>
+#include <string.h>
 
 typedef struct fs_handle_t fs_handle_t;
 
@@ -65,6 +66,21 @@ struct fs_handle_t {
 
 #define fs_scanf(_handle_,_s_fmt_,...) fscanf((_handle_)->ctx,_s_fmt_,__VA_ARGS__)
 #define fs_printf(_handle_,_s_fmt_,...) fprintf((_handle_)->ctx,_s_fmt_,__VA_ARGS__)
+
+#elif __FS_BUILD__ == FS_N64_ROMFS
+
+#define FS_SEEK_SET (1)
+#define FS_SEEK_CURR (2)
+#define FS_SEEK_END (3)
+struct __attribute__((aligned(64))) fs_handle_t  {
+	uint32_t mode;
+	uint32_t ext;
+	uint32_t addr;
+	uint32_t len;
+};
+
+#define fs_scanf(_handle_,_s_fmt_,...)  
+#define fs_printf(_handle_,_s_fmt_,...) 
 #else
 NO FILESYSTEM DEFINED
 #endif

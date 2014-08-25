@@ -75,7 +75,7 @@ void emu_step()
 		vblank lines x10 = 2280 dsc (1.08ms)
 */
 
-
+ 
 
 void emu_run()
 {
@@ -88,10 +88,21 @@ void emu_run()
 	extern struct hw hw;
 	extern struct pcm pcm;
 
-	pcm_rbuf_set_mode((hw.cgb) ? PCMRBUF_MODE_NON_BLOCKING : PCMRBUF_MODE_IMMEDIATE);
-	
+	extern byte g_curr_snd_driver;
+
+	if (hw.cgb) {
+		pcm_rbuf_set_mode(PCMRBUF_MODE_NON_BLOCKING);
+		g_curr_snd_driver = 1;
+	} else {
+		pcm_rbuf_set_mode(PCMRBUF_MODE_IMMEDIATE);
+		g_curr_snd_driver = 2;
+	}
+
+	const unsigned long long t2 = TIMER_TICKS_LL(17 * 1000);
+	unsigned long long t0=0,t1=0;
 	while (g_emu_running != 0)
 	{
+		//t0 = get_ticks();
 		cpu_emulate(2280   );
  
 		while ( R_LY > 0 &&  R_LY < 144) {
@@ -110,6 +121,8 @@ void emu_run()
 		while ( R_LY > 0  ) {
 			emu_step();
 		}
+		
+		//while (get_ticks()-t0 < t2);
 	}
 }
 

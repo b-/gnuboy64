@@ -2,7 +2,7 @@
 #include "filesystem.h"
 
 #ifdef FS_REDUCE_HEAP_FRAGMENTION
-/*Option to reduce heap fragmention*/
+/*Option to reduce heap fragmention ~conle*/
 #include <stdint.h>
 #include <string.h>
 

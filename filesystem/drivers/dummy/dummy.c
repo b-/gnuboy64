@@ -2,19 +2,19 @@
 #include "../fs_drv.h"
 
 int fs_drv_init(const char* args,int argc) {
-	return 0;
+	return 1;
 }
 
 int fs_drv_close() {
-	return 0;
+	return 1;
 }
 
 int fs_drv_set_sdc_speed(int fast) {
-	return 0;
+	return 1;
 }
 
 int fs_drv_sync() {
-	return 0;
+	return 1;
 }
 
 /*

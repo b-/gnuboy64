@@ -2,7 +2,10 @@
 	GNUBoy N64 port by Conle~ Conleon1988@gmail.com
 */
 
- 
+#ifndef MAX_SAVE_SLOTS
+	#define MAX_SAVE_SLOTS (999)
+#endif
+
 #define cached_to_uncached_addr(_addr_,_type_)( (_type_*)(0x20000000 + ((unsigned int) _addr_)) )
 #define uncached_to_cached_addr(_addr_,_type_)( (_type_*)(((unsigned int) _addr_) - 0x20000000) )
 #define uncached_addr(x)	((void *)(((u32)(x)) | 0xA0000000))
@@ -43,7 +46,7 @@
 #include "emu_core/pcm.h"
 #include "emu_core/rtc.h"
 #include "pcm_ring_buf.h"
-
+#include "ctl.h"
 #include "media.h"
 #include "rdp_srec.h"
 #include "umem/umem.h"
@@ -51,6 +54,15 @@
 #include "emu_core/lcd.h"
 #include "lcd_tables/lcd_pal4.h"
 #include <stdarg.h>
+ 
+#include "emu_core/defs.h"
+#include "emu_core/regs.h"
+#include "emu_core/mem.h"
+ 
+#include "emu_core/lcd.h"
+#include "emu_core/rtc.h"
+
+#include "emu_core/sound.h"
 
 typedef enum menu_state_t menu_state_t;
 enum menu_state_t {
@@ -62,6 +74,7 @@ enum menu_state_t {
 struct fb __attribute__ ((aligned (16))) fb;
 struct pcm __attribute__ ((aligned (16))) pcm;
 
+byte g_curr_snd_driver = 0;
 static uint16_t screen_info_changed = 0,screenshot_n = 0;
 static uint16_t frame_buffer_w = 0,frame_buffer_h = 0,frame_buffer_bpp  = 0,screen_w = 0,screen_h = 0,screen_bpp = 0;
 static uint8_t* frame_buffer = 0;
@@ -70,7 +83,7 @@ static struct controller_data controller;
 static int32_t last_button_data = 0;
 static rpd_srec_compiled_instruction_block_t* rdp_compiled_scene = 0;
 static sprite_t* rdp_scene_buffer = 0;
-static uint16_t save_slot = 0;
+uint16_t save_slot = 0;
 extern void emu_init();
 extern void emu_reset();
 extern void emu_run();
@@ -79,8 +92,9 @@ static void switch_display(int32_t hi_res,int32_t depth,int32_t clear_fb,int32_t
 static void fb_init(int rdp_fb,int scale) ;
 
 void doevents();
+extern void loadstate_ptr(byte* buf,un32 buf_size);
 
-static void delay_secs(int32_t secs) {
+void delay_secs(int32_t secs) {
 	unsigned long long int t0,t1,t2,t3;
 	const unsigned long long microsecond = 1000;
 	const unsigned long long second = microsecond * 1000;
@@ -187,7 +201,7 @@ static void fb_init(int rdp_fb,int scale)
 	if ((rdp_fb)) {// && (2==frame_buffer_bpp)) {
 		/*Init srec&buf,compile scene*/
  
-		const int32_t tw=160,th=144,tsw = 5,tsh = 4;
+		const int32_t tw=256,th=256,tsw = 5,tsh = 5;
 		if (rdp_scene_buffer) { free(rdp_scene_buffer); }
 		rdp_scene_buffer = (sprite_t*)malloc(sizeof(sprite_t) + (tw * th * frame_buffer_bpp) + 32);
  
@@ -216,18 +230,21 @@ static void fb_init(int rdp_fb,int scale)
 
 		/*TODO HW tile scaling...*/
 		
-		const int32_t x = (screen_w>>1) - (tw>>1),y=(screen_h>>1)-(th>>1);
+		int32_t sx = 0,sy = 0;
 		rdp_srec_texture_t srec_texture;
 		rdp_srec_tex_convert(rdp_scene_buffer,&srec_texture);
 
-		for (int32_t j = rdp_scene_buffer->vslices-1;j > 0 ;--j)
+		const scalar scale = 1.0;
+ 
+		for (int32_t j = 0;j < rdp_scene_buffer->vslices ;++j)
 		{
-		    for (int32_t i = rdp_scene_buffer->hslices-1;i > 0 ;--i)
+		    for (int32_t i = 0;i < rdp_scene_buffer->hslices ;++i)
 		    {
 				
 		        rdp_srec_op_sync(rdp_compiled_scene,SYNC_PIPE);
 		        rdp_srec_op_load_texture_stride(rdp_compiled_scene,0,0,MIRROR_DISABLED, &srec_texture, j*srec_texture.hslices + i);
-		        rdp_srec_op_draw_sprite(rdp_compiled_scene, 0,x+(i << tsw),y+(j << tsh));
+		        rdp_srec_op_draw_sprite_scaled(rdp_compiled_scene, 0,sx+((i << tsw)*scale) - (i*scale)   ,sy+((j << tsh)*scale) - (j*scale) ,scale,scale);
+ 
 		    }
 		}
 
@@ -291,7 +308,7 @@ static int32_t init_everything()
 	sys_set_boot_cic(6102);
     controller_init();
 
- 	pcm_rbuf_init(8000,2,1024*2);
+ 	pcm_rbuf_init(8000,2,2048 );
 	
 	return res;
 }
@@ -459,15 +476,74 @@ static void intro() {
 	delay_secs(3);
 }
 
+void browse_rom_data(uint32_t base_offset) {
+	
+	switch_display(1,32,1,1);
+	fb_init(0,1);
+
+	graphics_fill_screen(binded_display_ctx, 0);
+
+	uint32_t upd = 1,disp_mode = 0; //0 = hex
+	uint8_t buf[256];
+	char conv[32];
+
+	while (1) {
+		controller_read(&controller); 
+		controller_begin_state();
+
+		if (controller_btn_status(R)) //INC by 1MB
+			base_offset += 1 * 1024 * 1024,upd = 1;
+		else if (controller_btn_status(L)) //DEC by 1MB
+			base_offset -= 1 * 1024 * 1024,upd = 1;
+		else if (controller_btn_status(C_up)) //INC by 1B
+			base_offset += 1 ,upd = 1;
+		else if (controller_btn_status(C_down)) //DEC by 1B
+			base_offset -= 1 ,upd = 1;
+		else if (controller_btn_status(C_left)) //disp = hex
+			disp_mode = 0 ,upd = 1;
+		else if (controller_btn_status(C_right)) //disp = C
+			disp_mode = 1 ,upd = 1;
+		else if (controller_btn_status(Z))  
+			return;
+		if (upd) {
+			 
+			 
+			upd = 0;
+			graphics_fill_screen(binded_display_ctx, 0);
+			ctl_dma_rom_rd_abs(buf,base_offset,sizeof(buf));
+			uint32_t i = 0,y = 64,sx = 56,x = sx;
+			const uint32_t ls = screen_w - sx ;
+			
+
+			sprintf(conv,"LOC : 0x%08x |MODE=%s| R=+1M,L=-1M,Cu/u=+/-,Cl/r=disp,Z=Exit",base_offset,(disp_mode==0)?"H":"C");
+  			graphics_draw_text(binded_display_ctx,sx,56,conv);
+			for (;i < sizeof(buf);++i) {
+				sprintf(conv,(disp_mode==0) ? "%02x" : "%c",buf[i]);
+				graphics_draw_text(binded_display_ctx,x,y,conv);
+				x += 8;
+				if (x >= ls) {
+					y += 8;	
+					x = sx;
+				}
+			}
+			 
+		}
+
+		controller_end_state();
+	}
+
+	
+}
+
+
 int main()
 {
-	menu_state_t state;
-	
 	init_everything();
 
+#if __FS_BUILD__ != FS_N64_ROMFS
+	menu_state_t state;
 	intro();
 	state = STATE_BROWSER;
- 
 	do {
 		switch (state) {
 			case STATE_EMU: {
@@ -500,7 +576,117 @@ int main()
 			}
 		}
 	} while(1);
+#else
 
+
+	switch_display(1,16,1,1);
+	fb_init(0,1);	
+	graphics_fill_screen(binded_display_ctx, 0);
+
+	//
+	graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Official GNUBOYx86 port by Conleon(conleon1988@gmail.com)")<<3)>>1),(screen_h>>1)-(8/2),
+			"Official GNUBOYx86 port by Conleon(conleon1988@gmail.com)");
+	graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Visit : http://code.google.com/p/gnuboy/")<<3)>>1),(screen_h>>1)+32,
+			"Visit : http://code.google.com/p/gnuboy/");
+#if 0
+	{
+		graphics_fill_screen(binded_display_ctx, 0);
+		char dummy[128]={'\0'};
+		char tmp[20] = {'\0'};
+		ctl_dma_rom_rd(dummy,0,128);
+		sprintf(tmp,"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+		dummy[0],dummy[1],dummy[2],dummy[3],dummy[4],dummy[5],dummy[6],dummy[7],dummy[8],dummy[9],dummy[10],dummy[11],dummy[12],dummy[13],
+		dummy[14],dummy[15]);
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen(tmp)<<3)>>1),(screen_h>>1)-(8/2),
+			tmp);
+
+		char pat[8];
+		pat[0] = 'G';
+		pat[1] = 'N';
+		pat[2] = 'U';
+		pat[3] = 'B';
+		pat[4] = 'O';
+		pat[5] = 'Y';
+		pat[6] = '6';
+		pat[7] = '4';
+
+		uint32_t po = ctl_rom_scan(pat,0,sizeof(pat),1*1024*1024);
+		sprintf(tmp,"pat = 0x%08x",po);
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen(tmp)<<3)>>1),(screen_h>>1)+16,
+			tmp);
+
+		if (pat) {
+			ctl_dma_rom_rd(dummy,po,sizeof(pat));
+			sprintf(tmp,"PAT=%c%c%c%c%c%c%c%c",dummy[0],dummy[1],dummy[2],dummy[3],dummy[4],dummy[5],dummy[6],dummy[7]);
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen(tmp)<<3)>>1),(screen_h>>1)+32,
+			tmp);
+		}
+		delay_secs(5);
+	}
+#endif
+	//delay_secs(3);
+
+	//browse_rom_data(0);
+
+	switch_display(0,16,1,1);
+	fb_init(0,1);	
+	graphics_fill_screen(binded_display_ctx, 0);
+
+	disable_interrupts();
+	loader_init("blah.gb");
+	enable_interrupts();
+	screen_info_changed = 1;
+	save_slot = 0;
+	emu_init();
+	emu_reset();
+	graphics_fill_screen(binded_display_ctx, 0);
+
+
+	{
+		disable_interrupts();
+		uint8_t dummy[256];
+		ctl_dma_rom_rd(dummy,0,256);
+		uint32_t state_len = ((uint32_t)dummy[4] << 24U) | ((uint32_t)dummy[5] << 16U) | ((uint32_t)dummy[6] << 8U) | ((uint32_t)dummy[7]);
+		if (state_len) {
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Loading state..")<<3)>>1),(screen_h>>1)-(8/2),
+			"Loading state..");
+			delay_secs(1);
+ 
+
+			uint8_t* state = malloc(state_len);
+			if (!state) die("Unable to allocate %u for state",state_len);
+			ctl_dma_rom_rd(state,256  ,state_len);
+			loadstate_ptr(state,state_len);
+			vram_dirty();
+			pal_dirty();
+			sound_dirty();
+			mem_updatemap();
+			free(state);
+		}
+		enable_interrupts();
+	}
+
+	#if 1
+	{
+		extern int lcd_scale;
+		int32_t x = ((screen_w>>1) - ((160*lcd_scale)>>1))    ;
+		int32_t y = ((screen_h>>1) - ((144*lcd_scale)>>1))  + (144*lcd_scale) + 4;
+
+		char dummy[128]={'\0'};
+ 		char tmp[256];
+		ctl_dma_rom_rd(dummy,0,128);
+		sprintf(tmp,"%02x %02x %02x %02x %02x %02x %02x %02x",
+		dummy[0],dummy[1],dummy[2],dummy[3],dummy[4],dummy[5],dummy[6],dummy[7]);
+		graphics_draw_text(binded_display_ctx,x,y,tmp);
+		sprintf(tmp,"%c %c %c %c %c %c %c %c",dummy[8],dummy[9],dummy[10],dummy[11],dummy[12],dummy[13],
+		dummy[14],dummy[15]);
+		graphics_draw_text(binded_display_ctx,x,y+8,tmp);
+	}
+	#endif
+
+	emu_run();
+
+#endif
 	//Dont bother cleaning up memory.There's nowhere to return to  
 	while(1){}
     return 0;
@@ -511,8 +697,8 @@ int main()
 
 /**/
  
-
 static void info_print() {
+#if MAX_SAVE_SLOTS != 0
  	char buf[64];
 	extern int lcd_scale;
 	if (!screen_info_changed) {
@@ -531,6 +717,10 @@ static void info_print() {
 		sprintf(buf,"Save slot:%d ",save_slot);
 		graphics_draw_text(binded_display_ctx,x,y,buf);
 	}
+#else
+
+
+#endif
 }
 
 
@@ -636,10 +826,13 @@ void lcd_new_pass() {
 
 void doevents()
 {
+	
 	extern byte g_emu_running;
 	extern int lcd_scale;
 	controller_read(&controller); 
 	controller_begin_state();
+
+#if __FS_BUILD__ != FS_N64_ROMFS
 		if (controller_btn_status(C_left)) {
 			controller_end_state();
 	
@@ -699,7 +892,7 @@ void doevents()
 			enable_interrupts();
 		} else if (controller_btn_status(C_up)) {
 			uint16_t tmp = save_slot;
-			save_slot += save_slot < 999;
+			save_slot += save_slot < MAX_SAVE_SLOTS;
 			screen_info_changed = save_slot != tmp;
 		} else if (controller_btn_status(C_down)) {
 			uint16_t tmp = save_slot;
@@ -725,26 +918,61 @@ void doevents()
 			fs_drv_set_sdc_speed(1);
 			enable_interrupts();
 		}
-#if 0
-		if (controller_btn_pressed(C_up)) {
+#else
+
+		if (controller_btn_pressed(C_left)) {
 			disable_interrupts();
-			fs_drv_sync();
-			fs_drv_set_sdc_speed(0);
+			screen_info_changed = 1;
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Saving SRAM+RTC..")<<3)>>1),(screen_h>>1)-(8/2),"Saving SRAM+RTC..");
 			sram_save();
 			rtc_save();
-			fs_drv_set_sdc_speed(1);
 			enable_interrupts();
-		}
-		if (controller_btn_pressed(C_down)) {
+			delay_secs(1);
+		} else if (controller_btn_pressed(C_right)) {
 			disable_interrupts();
-			fs_drv_sync();
-			fs_drv_set_sdc_speed(0);
+			screen_info_changed = 1;
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Loading SRAM+RTC..")<<3)>>1),(screen_h>>1)-(8/2),"Loading SRAM+RTC..");
 			sram_load();
 			rtc_load();
-			fs_drv_set_sdc_speed(1);
 			enable_interrupts();
+			delay_secs(1);
+		}  else if (controller_btn_pressed(C_up)) {
+			graphics_fill_screen(binded_display_ctx, 0);
+			g_curr_snd_driver = (g_curr_snd_driver + 1) % 3;
+			switch (g_curr_snd_driver) {
+				case 0:
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("SOUND DRIVER:OFF")<<3)>>1),(screen_h>>1)-(8/2),"SOUND DRIVER:OFF");
+					pcm_rbuf_set_mode(PCMRBUF_MODE_IMMEDIATE);
+				break;
+				case 1:
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("SOUND DRIVER:NON BLOCKING")<<3)>>1),(screen_h>>1)-(8/2),"SOUND DRIVER:NON BLOCKING");
+					pcm_rbuf_set_mode(PCMRBUF_MODE_IMMEDIATE);
+				break;
+				case 2:
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("SOUND DRIVER:IMMEDIATE")<<3)>>1),(screen_h>>1)-(8/2),"SOUND DRIVER:IMMEDIATE");
+					pcm_rbuf_set_mode(PCMRBUF_MODE_IMMEDIATE);
+				break;
+			}
+			delay_secs(4);
+			graphics_fill_screen(binded_display_ctx, 0);
+		}   else if (controller_btn_status(L)) {
+			disable_interrupts();
+			screen_info_changed = 1;
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Saving state..")<<3)>>1),(screen_h>>1)-(8/2),"Saving state..");
+			state_save(save_slot);
+			enable_interrupts();
+			delay_secs(1);
+		} else if (controller_btn_status(R)) {
+			disable_interrupts();
+			screen_info_changed = 1;
+			graphics_draw_text(binded_display_ctx,(screen_w>>1) - ((strlen("Loading state..")<<3)>>1),(screen_h>>1)-(8/2),
+			"Loading state..");
+			state_load(save_slot);
+			enable_interrupts();
+			delay_secs(1);
 		}
 #endif
+ 
 	pad_begin();
 		pad_set(PAD_A,controller_btn_pressed(A) != 0);
 		pad_set(PAD_B,controller_btn_pressed(B) != 0);
@@ -774,7 +1002,9 @@ void pcm_init() {
 }
 
 int pcm_submit() {
-	pcm_rbuf_cycle();
+	if (g_curr_snd_driver)
+		pcm_rbuf_cycle();
+
 	return 1;
 }
 
@@ -784,7 +1014,6 @@ void pcm_close() {
 
 void sys_checkdir(char *path, int wr)
 {
-	(void) path; /* avoid warning about unused parameter */
-	(void) wr; /* avoid warning about unused parameter */
+ 
 }
 

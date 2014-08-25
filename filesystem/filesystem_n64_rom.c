@@ -1,12 +1,12 @@
 /*
 	Basic N64 ROMFS wrapper (Conle)
-	NOTE:Mounting has to take place elsewhere
 */
 
 #include "filesystem.h"
 
 #if __FS_BUILD__ == FS_N64_ROMFS
 
+ 
 fs_handle_t* fs_open(const char* path,const char* mode) {
 	return NULL;
 }
@@ -38,7 +38,7 @@ char* fs_gets(fs_handle_t* handle,char* buf,const unsigned int len) {
 	return NULL;
 }
 
-int fs_list_files(const char* path,void (*cb)(const char*,fs_file_type_t)) {
+int fs_list_files(const char* path,int (*cb)(const char*,fs_file_type_t)) {
 	if ((!cb) || (!path)) { return 0; }
 	return 0;
 }
